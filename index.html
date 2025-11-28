@@ -1,84 +1,88 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <style>body, html { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#000; }</style>
+    <style>
+        body, html { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#000; }
+        iframe, #player { width: 100vw; height: 100vh; border: none; display: block; }
+    </style>
 </head>
 <body>
     <div id="player"></div>
 
     <script>
-        // Récupérer les params URL (ex: ?v=VIDEO_ID&time=10&type=youtube)
+        // --- 1. CONFIGURATION & MODE TEST ---
         const params = new URLSearchParams(window.location.search);
-        const videoId = params.get('v');
-        const videoType = params.get('type');
-        const startTime = params.get('t') || 0;
-
-        let player;
-        let twitchPlayer;
-
-        // --- YOUTUBE API ---
-        if (videoType === 'youtube') {
-            const tag = document.createElement('script');
-            tag.src = "https://www.youtube.com/iframe_api";
-            document.head.appendChild(tag);
-
-            window.onYouTubeIframeAPIReady = function() {
-                player = new YT.Player('player', {
-                    height: '100%',
-                    width: '100%',
-                    videoId: videoId,
-                    playerVars: {
-                        'playsinline': 1,
-                        'autoplay': 1,
-                        'controls': 0,
-                        'start': parseInt(startTime),
-                        'origin': window.location.origin // Origine valide HTTPS !
-                    },
-                    events: {
-                        'onReady': (event) => {
-                            event.target.playVideo();
-                            // Signaler au NUI que c'est prêt (optionnel)
-                        }
-                    }
-                });
-            };
-        }
         
-        // --- TWITCH ---
+        let videoId = params.get('v');
+        let videoType = params.get('type');
+        let startTime = params.get('t') || 0;
+
+        // MODE TEST AUTO : Si aucune URL n'est fournie, on lance une vidéo démo
+        if (!videoId) {
+            console.log("MODE TEST: Aucune vidéo spécifiée, lancement du test.");
+            videoId = "LXb3EKWsInQ"; // 4K Nature (Costa Rica)
+            videoType = "youtube";
+        }
+
+        const container = document.getElementById('player');
+        let twitchPlayer = null;
+
+        // --- 2. LOGIQUE YOUTUBE (VIA INVIDIOUS / STYLE FREETUBE) ---
+        if (videoType === 'youtube') {
+            const iframe = document.createElement('iframe');
+            
+            // Utilisation de 'yewtu.be' (Instance Invidious très stable)
+            // autoplay=1 : Lecture auto
+            // controls=0 : Masque l'interface
+            // loop=1 : Boucle (optionnel, souvent mieux pour l'ambiance)
+            // related_videos=0 : Pas de suggestions à la fin
+            const backendUrl = "https://yewtu.be"; 
+            
+            iframe.src = `${backendUrl}/embed/${videoId}?autoplay=1&controls=0&loop=1&related_videos=0&t=${startTime}`;
+            iframe.allow = "autoplay; fullscreen";
+            
+            container.appendChild(iframe);
+        }
+
+        // --- 3. LOGIQUE TWITCH ---
         else if (videoType === 'twitch') {
-             const script = document.createElement('script');
-             script.src = "https://player.twitch.tv/js/embed/v1.js";
-             script.onload = () => {
-                 const options = {
+            const script = document.createElement('script');
+            script.src = "https://player.twitch.tv/js/embed/v1.js";
+            
+            script.onload = () => {
+                const options = {
                     width: '100%',
                     height: '100%',
                     channel: videoId,
-                    parent: [window.location.hostname, "localhost"] // Important pour Twitch
+                    layout: "video", // Cache le chat
+                    autoplay: true,
+                    parent: ["localhost", window.location.hostname] 
                 };
                 twitchPlayer = new Twitch.Player("player", options);
-             };
-             document.head.appendChild(script);
+            };
+            document.head.appendChild(script);
         }
 
-        // --- ECOUTER LES ORDRES DU NUI (FIVEM) ---
+        // --- 4. GESTION DES COMMANDES (NUI FIVEM) ---
         window.addEventListener('message', function(event) {
-            // Sécurité: tu peux vérifier event.origin ici si tu veux être strict
-            
             const data = event.data;
-            if(!data) return;
+            if (!data) return;
 
-            // Logique YouTube
-            if (videoType === 'youtube' && player && player.playVideo) {
-                if (data.action === 'volume') player.setVolume(data.value);
-                if (data.action === 'pause') player.pauseVideo();
-                if (data.action === 'play') player.playVideo();
-            }
-            
-            // Logique Twitch
+            // Commandes Twitch
             if (videoType === 'twitch' && twitchPlayer) {
                 if (data.action === 'volume') twitchPlayer.setVolume(data.value / 100);
                 if (data.action === 'pause') twitchPlayer.pause();
                 if (data.action === 'play') twitchPlayer.play();
+                if (data.action === 'stop') container.innerHTML = '';
+            }
+
+            // Commandes Invidious/YouTube
+            // Note: Le contrôle iframe cross-origin est limité. 
+            // Le STOP supprime l'élément pour garantir l'arrêt du son.
+            if (videoType === 'youtube') {
+                if (data.action === 'stop') {
+                    container.innerHTML = ''; 
+                }
             }
         });
     </script>
