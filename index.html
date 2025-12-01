@@ -10,41 +10,37 @@
     <div id="player"></div>
 
     <script>
-        // --- 1. CONFIGURATION & MODE TEST ---
+        const proxyUrl = "https://www.youtube-nocookie.com";
+
         const params = new URLSearchParams(window.location.search);
-        
         let videoId = params.get('v');
         let videoType = params.get('type');
         let startTime = params.get('t') || 0;
 
-        // MODE TEST AUTO : Si aucune URL n'est fournie, on lance une vidéo démo
-        if (!videoId) {
-            console.log("MODE TEST: Aucune vidéo spécifiée, lancement du test.");
-            videoId = "LXb3EKWsInQ"; // 4K Nature (Costa Rica)
-            videoType = "youtube";
-        }
-
         const container = document.getElementById('player');
         let twitchPlayer = null;
 
-        // --- 2. LOGIQUE YOUTUBE (VIA INVIDIOUS / STYLE FREETUBE) ---
+        if (!videoId) {
+            console.log("MODE TEST ACTIVÉ");
+            videoId = "LXb3EKWsInQ"; // Costa Rica 4K
+            videoType = "youtube";
+        }
+
         if (videoType === 'youtube') {
             const iframe = document.createElement('iframe');
             
-            // Utilisation de 'yewtu.be' (Instance Invidious très stable)
+            // Construction URL Piped
             // autoplay=1 : Lecture auto
-            // controls=0 : Masque l'interface
-            // loop=1 : Boucle (optionnel, souvent mieux pour l'ambiance)
-            // related_videos=0 : Pas de suggestions à la fin
-            const backendUrl = "https://yewtu.be"; 
+            // controls=0 : Interface cachée
+            // modestbranding=1 : Propre
+            // iv_load_policy=3 : Pas d'annotations
+            iframe.src = `${proxyUrl}/embed/${videoId}?autoplay=1&controls=0&modestbranding=1&iv_load_policy=3&time=${startTime}`;
             
-            iframe.src = `${backendUrl}/embed/${videoId}?autoplay=1&controls=0&loop=1&related_videos=0&t=${startTime}`;
-            iframe.allow = "autoplay; fullscreen";
-            
+            iframe.allow = "autoplay; encrypted-media; picture-in-picture";
             container.appendChild(iframe);
         }
 
-        // --- 3. LOGIQUE TWITCH ---
+        // --- 4. LOGIQUE TWITCH ---
         else if (videoType === 'twitch') {
             const script = document.createElement('script');
             script.src = "https://player.twitch.tv/js/embed/v1.js";
@@ -54,21 +50,22 @@
                     width: '100%',
                     height: '100%',
                     channel: videoId,
-                    layout: "video", // Cache le chat
+                    layout: "video",
                     autoplay: true,
-                    parent: ["localhost", window.location.hostname] 
+                    // "parent" est crucial pour Twitch. Ajoute ton domaine si ce n'est pas localhost.
+                    parent: ["localhost", "127.0.0.1", window.location.hostname] 
                 };
                 twitchPlayer = new Twitch.Player("player", options);
             };
             document.head.appendChild(script);
         }
 
-        // --- 4. GESTION DES COMMANDES (NUI FIVEM) ---
+        // --- 5. GESTION DES COMMANDES (FIVEM NUI) ---
         window.addEventListener('message', function(event) {
             const data = event.data;
             if (!data) return;
 
-            // Commandes Twitch
+            // Twitch (Contrôle total)
             if (videoType === 'twitch' && twitchPlayer) {
                 if (data.action === 'volume') twitchPlayer.setVolume(data.value / 100);
                 if (data.action === 'pause') twitchPlayer.pause();
@@ -76,12 +73,10 @@
                 if (data.action === 'stop') container.innerHTML = '';
             }
 
-            // Commandes Invidious/YouTube
-            // Note: Le contrôle iframe cross-origin est limité. 
-            // Le STOP supprime l'élément pour garantir l'arrêt du son.
+            // YouTube (Piped)
             if (videoType === 'youtube') {
                 if (data.action === 'stop') {
-                    container.innerHTML = ''; 
+                    container.innerHTML = ''; // Arrêt brutal pour couper le son
                 }
             }
         });
